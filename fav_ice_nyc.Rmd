@@ -1,0 +1,148 @@
+---
+title: "Firearm Violence and ICE-race/income in New York, NY"
+author: "Adam Whalen"
+date: "6/26/2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(httr)
+library(leaflet)
+library(tidygeocoder)
+
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_color_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+### NYC OpenData
+
+This research project will be an analysis of firearm violence within the five boroughs of New York, NY. I obtained data from [NYC OpenData](https://data.cityofnewyork.us/Public-Safety/NYPD-Shooting-Incident-Data-Historic-/833y-fsy8/about_data), a city-run repository of publicly-available datasets from various agencies. I will be examing the association between firearm violence in New York with the Index of Concentration at the Extremes, a measure of racial and economic inequality, at the Census tract level. Data was accessed June 25, 2024 and was last updated on April 23, 2024. Firearm violence data runs from 2006 until the end of 2023. 
+
+First, read in the NYC data.
+
+```{r fav_import, warning = F}
+nyc_fav = read_csv("./data/NYPD_Shooting_Incident_Data__Historic__20240625.csv") %>% 
+  janitor::clean_names()
+```
+
+The dataset contains a lot of information that is not necessary for our use, as well as some indicators that are still in development, so we will tidy the set and exclude them.
+
+```{r tidy_restrict}
+fav_tidy = 
+  nyc_fav %>% 
+  rename(fatal = statistical_murder_flag) %>% 
+  mutate(
+    incident_key = as.character(incident_key),
+    occur_date = as.Date(occur_date, "%m/%d/%Y"),
+    boro = as_factor(boro),
+    vic_age_group = as_factor(vic_age_group),
+    vic_sex = as_factor(vic_sex),
+    vic_race = as_factor(vic_race)
+  ) %>% 
+  select(incident_key, occur_date, boro, fatal, vic_age_group:vic_race, latitude, longitude)
+```
+
+Some quick summary statistics of the people who were victims of firearm violence in New York:
+
+```{r summary}
+fav_tidy %>% 
+  group_by(vic_race) %>% 
+  count()
+
+fav_tidy %>% 
+  group_by(vic_age_group) %>% 
+  count()
+
+fav_tidy %>% 
+  group_by(vic_sex) %>% 
+  count()
+
+fav_tidy %>% 
+  group_by(boro) %>% 
+  count()
+
+fav_tidy %>% 
+  group_by(fatal) %>% 
+  count()
+```
+
+The majority of firearm victims in New York were Black or Hispanic, between the ages of 18 and 45, male, located in Brooklyn, and survived their gunshot wound. 
+
+Let's now look at the spatial distribution of the data quickly, as a gut check for accuracy/data prep.
+
+```{r geoplot}
+fav_tidy %>% 
+  mutate(text_label = str_c(occur_date, " \n", fatal)) %>% 
+  leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addCircleMarkers(lat = ~latitude, lng = ~longitude, radius = 0.1, label = ~text_label)
+```
+
+NOTE: updated analysis ends here 6/26/24
+
+
+### ACS covariate data
+
+In addition to fatal encounter data, I also want to examine Census tract-level variables that may covary with these deaths. I will pull directly from the ACS 5-year estimates, looking at % poverty, health insurance, White population, and unemployment for now -- perhaps more later. 
+
+NOTE: which 5-year estimate to pull? Is it better to just grab one (most recent? median?) estimates and use that as a covariate, or should I grab periodic measures and allow it to vary over time? Or, use 2010 Census data as it represents a midpoint that could be extrapolated forwards and backwards in time? Or is there another mechanism? Should talk about this with someone smarter. 
+
+For now, let's just do 2018 ACS 5-year estimates. 
+
+```{r acs, eval = F}
+library(tidycensus)
+
+#register with my Census API key (note that this step may not be needed):
+# census_api_key("68f4696702f9089f4ec32841b66e6d8f0d5febe1", install = TRUE)
+
+acs = 
+  load_variables(2018, "acs5", cache = TRUE)
+
+vars = c(Total = "B01001_001",
+         Poverty = "B06012_002",
+         No_Ins = "B992701_003",
+         White = "B02001_002",
+         Unemp = "B27011_008")
+
+data = get_acs(state = "ny", 
+               geography = "tract",
+               variables = vars,
+               geometry = TRUE,
+               survey = "acs5",
+               output = "wide")
+nys_demog = 
+  data %>% 
+  mutate(
+    pct_poverty = (PovertyE/TotalE) * 100,
+    pct_insured = (No_InsE/TotalE) * 100,
+    pct_white = (WhiteE/TotalE) * 100,
+    pct_unemp = (UnempE/TotalE) * 100
+  ) %>% 
+  select(GEOID, NAME, geometry, pct_poverty:pct_unemp)
+
+plot(nys_demog)
+```
+
+Looks good. Now, let's remove the geography and export to be used in QGIS.
+
+```{r write, eval = F}
+nys_demog %>% 
+  select(-geometry) %>% 
+  write_csv("./data/nys_demog.csv")
+```
+
+
