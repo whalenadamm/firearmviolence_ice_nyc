@@ -34,7 +34,7 @@ scale_fill_discrete = scale_fill_viridis_d
 
 ### NYC OpenData
 
-This research project will be an analysis of firearm violence within the five boroughs of New York, NY. I obtained data from [NYC OpenData](https://data.cityofnewyork.us/Public-Safety/NYPD-Shooting-Incident-Data-Historic-/833y-fsy8/about_data), a city-run repository of publicly-available datasets from various agencies. I will be examing the association between firearm violence in New York with the Index of Concentration at the Extremes, a measure of racial and economic inequality, at the Census tract level. Data was accessed June 25, 2024 and was last updated on April 23, 2024. Firearm violence data runs from 2006 until the end of 2023. 
+This research project will be an analysis of firearm violence within the five boroughs of New York, NY. I obtained data from [NYC OpenData](https://data.cityofnewyork.us/Public-Safety/NYPD-Shooting-Incident-Data-Historic-/833y-fsy8/about_data), a city-run repository of publicly-available datasets from various agencies. I will be examining the association between firearm violence in New York with the Index of Concentration at the Extremes, a measure of racial and economic inequality, at the Census tract level. NYC Firearm data was accessed June 25, 2024 and was last updated on April 23, 2024. Firearm violence data runs from 2006 until the end of 2023. 
 
 First, read in the NYC data.
 
@@ -96,75 +96,68 @@ fav_tidy %>%
   addCircleMarkers(lat = ~latitude, lng = ~longitude, radius = 0.1, label = ~text_label)
 ```
 
-NOTE: updated analysis ends here 6/26/24
+I will need to aggregate these up to the CT-level in order to merge with ICE data and run analyses, or at least assign a CT value to each case.
 
 
 ### US Census data for Index of Concentration at the Extremes
 
-Often, geospatial measures of inequality examine only income or race/ethnicity independently. The Index of Concentration at the Extremes (ICE) allows us to examine both simultaneously, and provides a relative measure of the amount of privilege or deprivation for a specific spatial area. For example, we can examine whether gun violence is more common in whiter, wealthier CTs compared to less white, lower income CTs. 
+Often, geospatial measures of inequality examine only income or race/ethnicity independently. The Index of Concentration at the Extremes (ICE) allows us to examine both simultaneously, and provides a relative measure of the amount of racialized economic segregation for a specific spatial area. For example, we can examine whether gun violence is more common in whiter, wealthier CTs compared to less white, lower income CTs. 
 
 NOTE: which estimate to pull? Is it better to just grab one (most recent? median?) estimates and use that as a covariate, or should I grab periodic measures and allow it to vary over time? Or, use 2010 Census data as it represents a midpoint that could be extrapolated forwards and backwards in time? Or is there another mechanism? Should talk about this with someone smarter. 
 
 Because our exposure data spans 2006-2023, for ease I will use the 2015 US Census ACS 5-year estimates (2011-2015) to calculate ICE measures. We may also want to look at additional covariates, but this will be good for now. 
 
+I also will examine ICE-income (income inequality alone), ICE-race (racial inequality alone), and CT-level % in poverty to see how the association with firearm violence rates differs with each measure. 
 
 Much of this code and approach has been borrowed from the [PHDGP 2.0](https://www.hsph.harvard.edu/thegeocodingproject/the-public-health-disparities-geocoding-project-2-0/) developed by Chen, Krieger, et al at Harvard. 
 
+NOTE: should we adjust for county (boro)-level covariates? Should probably at least pull that out for random effects?
+
 ```{r acs}
+# identify and select the variables we need from ACS
 var_acs =
   tibble::tribble(
-  # ICEraceinc
   ~var, ~varname, ~description,
   # total population
   "B01001_001",  "total_popsize", "total population estimate", 
   
   # racial composition 
-  'B01003_001',  "race_ethnicity_total", "race_ethnicity_total",
+  "B02001_001",  "race_ethnicity_total", "race_ethnicity_total",
+  "B03001_003",  'total_hispanic',           'total hispanic population estimate',
+  "B02001_003",  'total_black',              'total black, hispanic or non-hispanic estimate',
+  "B02001_002",  'total_white_nh',           'total white, non-hispanic population estimate',
   
   # ICEraceinc
   "B19001_001",  'hhinc_total',   "total population for household income estimates",
-  "B19001A_002", 'hhinc_w_1',     "white n.h. pop with household income <$10k",
-  "B19001A_003", 'hhinc_w_2',     "white n.h. pop with household income $10k-14 999k",
-  "B19001A_004", 'hhinc_w_3',     "white n.h. pop with household income $15k-19 999k",
-  "B19001A_005", 'hhinc_w_4',     "white n.h. pop with household income $20k-24 999k",
-  "B19001A_014", 'hhinc_w_5',     "white n.h. pop with household income $100 000 to $124 999",
-  "B19001A_015", 'hhinc_w_6',     "white n.h. pop with household income $125k-149 999k",
-  "B19001A_016", 'hhinc_w_7',     "white n.h. pop with household income $150k-199 999k",
-  "B19001A_017", 'hhinc_w_8',     "white n.h. pop with household income $196k+",
+  "B19001A_002",  'hhinc_w_1',     "white n.h. pop with household income <$10k",
+  "B19001A_003",  'hhinc_w_2',     "white n.h. pop with household income $10k-14 999k",
+  "B19001A_004",  'hhinc_w_3',     "white n.h. pop with household income $15k-19 999k",
+  "B19001A_005",  'hhinc_w_4',     "white n.h. pop with household income $20k-24 999k",
+  "B19001A_014",  'hhinc_w_5',     "white n.h. pop with household income $100 000 to $124 999",
+  "B19001A_015",  'hhinc_w_6',     "white n.h. pop with household income $125k-149 999k",
+  "B19001A_016",  'hhinc_w_7',     "white n.h. pop with household income $150k-199 999k",
+  "B19001A_017",  'hhinc_w_8',     "white n.h. pop with household income $196k+",
   "B19001_002",  'hhinc_total_1', "total pop with household income <$10k",
   "B19001_003",  'hhinc_total_2', "total pop with household income $10k-14 999k",
   "B19001_004",  'hhinc_total_3', "total pop with household income $15k-19 999k",
   "B19001_005",  'hhinc_total_4', "total pop with household income $20k-24 999k",
+  "B19001_014",  'hhinc_total_5', "total pop with household income $100 000 to $124 999",
+  "B19001_015",  'hhinc_total_6', "total pop with household income $125k-149 999k",
+  "B19001_016",  'hhinc_total_7', "total pop with household income $150k-199 999k",
+  "B19001_017",  'hhinc_total_8', "total pop with household income $196k+",
 
   # poverty
   "B05010_002",  'in_poverty',    "population with household income < poverty line",
-  "B05010_001",  'total_pop_for_poverty_estimates',  "total population for poverty estimates",
+  "B05010_001",  'total_pop_for_poverty_estimates',  "total population for poverty estimates"
+  )
 
-  # median income
-  "B06011_001",  'median_income',  "median income estimate for total population",
-  
-  # crowded housing
-  "B25014_005",  'owner_occupied_crowding1', 'owner occupied, 1 to 1.5 per room',
-  "B25014_006",  'owner_occupied_crowding2', 'owner occupied, 1.51 to 2 per room',
-  "B25014_007",  'owner_occupied_crowding3', 'owner occupied, 2.01 or more per room',
-  "B25014_011",  'renter_occupied_crowding1', 'owner occupied, 1 to 1.5 per room',
-  "B25014_012",  'renter_occupied_crowding2', 'owner occupied, 1.51 to 2 per room',
-  "B25014_013",  'renter_occupied_crowding3', 'owner occupied, 2.01 or more per room',
-  "B25014_001",  'crowding_total',            'total for crowding (occupants per room)',
-  
-  "B01001I_001",  'total_hispanic',           'total hispanic population estimate',
-  "B01001B_001",  'total_black',              'total black, hispanic or non-hispanic estimate',
-  "B01001H_001",  'total_white_nh',           'total white, non-hispanic population estimate'
-)
-
-# fetch the absms from the American Community Survey API 
-acs15 <- tidycensus::get_acs(
+# pull the ACS variables 
+acs15 = get_acs(
   geography = 'tract',
   state = 'NY',
   county = c("New York", "Queens", "Bronx", "Richmond", "Kings"),
   year = 2015,
   variables = var_acs$var)
-
 
 # pivot to a wide format for renaming, dropping the margin of error data
 acs15 %<>% 
@@ -184,8 +177,8 @@ acs15 %<>%
 # we use the injection-operator `!!`.  you can learn more about the injection
 # operator by running ?`!!` in your R console. 
 
-rename_vars <- setNames(var_acs$var, var_acs$varname)
-acs15 <- acs15 %>% rename(!!rename_vars)
+rename_vars = setNames(var_acs$var, var_acs$varname)
+acs15 = acs15 %>% rename(!!rename_vars)
 
 # calculate ABSMs
 acs15_ice = 
@@ -193,43 +186,48 @@ acs15_ice =
   mutate(
     # we calculate the people of color low income counts as the overall
     # low income counts minus the white non-hispanic low income counts
-    people_of_color_low_income =
+    nonwhite_low_income =
       (hhinc_total_1 + hhinc_total_2 + hhinc_total_3 + hhinc_total_4) -
       (hhinc_w_1 + hhinc_w_2 + hhinc_w_3 + hhinc_w_4),
     # sum up the white non-hispanic high income counts
-    white_non_hispanic_high_income =
+    whitenh_high_income =
       (hhinc_w_5 + hhinc_w_6 + hhinc_w_7 + hhinc_w_8),
     # calculate the index of concentration at the extremes for racialized
     # economic segregation (high income white non-hispanic vs. low income
     # people of color)
     ICEraceinc =
-      (white_non_hispanic_high_income - people_of_color_low_income) /
+      (whitenh_high_income - nonwhite_low_income) /
       hhinc_total,
 
     prop_in_poverty = in_poverty / total_pop_for_poverty_estimates,
+    # ICE race - prop nonwhite to prop white
+    ICErace = 
+      (total_white_nh - (total_popsize - total_white_nh)) / total_popsize,
     
-    crowding = (
-      owner_occupied_crowding1 + owner_occupied_crowding2 + owner_occupied_crowding3 +
-        renter_occupied_crowding1 + renter_occupied_crowding2 + renter_occupied_crowding3
-    ) / crowding_total,
+    # ICE income: prop low income to high income
+    low_inc = (hhinc_total_1 + hhinc_total_2 + hhinc_total_3 + hhinc_total_4),
+    high_inc = (hhinc_total_5 + hhinc_total_6 + hhinc_total_7 + hhinc_total_8),
+    ICEincome = (high_inc - low_inc) / total_popsize,
     
     prop_black = total_black / total_popsize,
     prop_hispanic = total_hispanic / total_popsize,
     prop_white_nh = total_white_nh / total_popsize
-  ) %>%
+    ) %>%
   select(
     GEOID,
+    NAME,
     ICEraceinc,
     prop_in_poverty,
-    median_income,
-    crowding,
+    ICErace,
+    ICEincome,
     prop_black,
     prop_hispanic,
-    prop_white_nh
+    prop_white_nh,
+    total_popsize
   )
 ```
 
-Pause here as of 7/11/24.
+Pause here as of 7/12/24.
 
 ```{r eval = F}
 # join in the ABSMs data
