@@ -229,6 +229,14 @@ acs15_ice =
 
 Pause here as of 7/12/24.
 
+Temporary change in analytic plan: write to CSV and do simple spatial regression analysis in QGIS. 
+
+```{r write_temp, eval = F}
+acs15_ice %>% write_csv("./data/acs_data.csv")
+fav_tidy %>% write_csv("./data/nyc_fav.csv")
+```
+
+
 Need to assess how to format FAV data so that it can be used in the same dataset as the ICE data and be applied to a Poisson model. Current thought is to assign CTs to each case and calculate IRRs for quartiles of ICE. 
 
 ```{r eval = F}
